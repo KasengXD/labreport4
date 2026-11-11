@@ -1,4 +1,3 @@
-
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,7 +11,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 # Page Configuration
-st.set_page_config(page_title="Sigmoid Activation NN Visualizer", layout="wide")
+if __name__ == "__main__":
+    st.set_page_config(
+        page_title="Sigmoid Activation NN Visualizer",
+        layout="wide"
+    )
 
 st.title("2. Sigmoid Activation Function")
 st.write(
