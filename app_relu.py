@@ -1,283 +1,195 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-
 import torch
 import torch.nn as nn
-import torch.optim as optim
-
 from sklearn.datasets import make_moons, make_circles
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from torch.utils.data import TensorDataset, DataLoader
 
-# Page Configuration
 if __name__ == "__main__":
-    st.set_page_config(
-        page_title="ReLU Activation NN Visualizer",
-        layout="wide"
-    )
-
-st.title("1. Rectified Linear Unit (ReLU) Activation Function")
-st.write(
-    """
-    **ReLU** is defined as $f(z) = \\max(0, z)$.
-    It outputs z if positive; zero otherwise.
-    This app demonstrates PyTorch MLP training with **ReLU** activation.
-    """
-)
-
-# Sidebar settings
-st.sidebar.header("Hyperparameters")
-dataset_type = st.sidebar.selectbox("Dataset type", ["Moons", "Circles"])
-n_samples = st.sidebar.slider("Number of samples", 200, 1500, 500, step=100)
-noise = st.sidebar.slider("Noise level", 0.0, 0.5, 0.2, step=0.05)
-hidden_size = st.sidebar.slider("Hidden layer size", 4, 128, 16, step=4)
-n_hidden_layers = st.sidebar.slider("Number of hidden layers", 1, 3, 2)
-learning_rate = st.sidebar.select_slider(
-    "Learning rate",
-    options=[0.001, 0.003, 0.01, 0.03, 0.1],
-    value=0.01
-)
-epochs = st.sidebar.slider("Epochs", 10, 500, 150, step=10)
-seed = st.sidebar.number_input("Random seed", 0, 9999, 42)
-
-# Generate Dataset
-torch.manual_seed(seed)
-np.random.seed(seed)
-
-if dataset_type == "Moons":
-    X, y = make_moons(n_samples=n_samples, noise=noise, random_state=seed)
-else:
-    X, y = make_circles(
-        n_samples=n_samples, noise=noise, factor=0.5, random_state=seed
-    )
-
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X_scaled, y, test_size=0.3, random_state=seed, stratify=y
-)
-
-# PyTorch Dataset
-class SimpleDataset(torch.utils.data.Dataset):
-    def __init__(self, X, y):
-        self.X = torch.from_numpy(X).float()
-        self.y = torch.from_numpy(y).long()
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
+    st.set_page_config(page_title="ReLU Activation Function", page_icon="🧠", layout="wide")
 
 
-train_loader = torch.utils.data.DataLoader(
-    SimpleDataset(X_train, y_train), batch_size=64, shuffle=True
-)
+def run_app():
+    st.title("ReLU Activation Function")
+    st.write("ReLU returns zero for negative inputs and keeps positive inputs unchanged.")
+    st.latex(r"f(x)=\max(0,x)")
+    st.latex(r"f'(x)=\begin{cases}0 & x\leq 0\\1 & x>0\end{cases}")
 
-test_loader = torch.utils.data.DataLoader(
-    SimpleDataset(X_test, y_test), batch_size=64, shuffle=False
-)
+    st.sidebar.header("Curve")
+    x_input = st.sidebar.slider("Input value x", -10.0, 10.0, 1.0, 0.1, key="relu_x")
 
-# ReLU PyTorch Model
-class ReLUNet(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, n_layers):
-        super().__init__()
+    output = max(0, x_input)
+    derivative = 1.0 if x_input > 0 else 0.0
 
-        layers = [nn.Linear(input_dim, hidden_dim), nn.ReLU()]
+    st.sidebar.divider()
+    st.sidebar.header("Neural Network Demo")
 
-        for _ in range(n_layers - 1):
-            layers.append(nn.Linear(hidden_dim, hidden_dim))
-            layers.append(nn.ReLU())
+    dataset_name = st.sidebar.selectbox("Dataset", ["Moons", "Circles"], key="relu_dataset")
+    samples = st.sidebar.slider("Samples", 100, 1000, 300, 50, key="relu_samples")
+    noise = st.sidebar.slider("Noise", 0.0, 0.5, 0.2, 0.05, key="relu_noise")
 
-        layers.append(nn.Linear(hidden_dim, output_dim))
-        self.net = nn.Sequential(*layers)
+    with st.sidebar.expander("Advanced settings"):
+        hidden_size = st.number_input("Hidden layer size", 4, 128, 16, 4, key="relu_hidden")
+        hidden_layers = st.number_input("Number of hidden layers", 1, 5, 2, key="relu_layers")
+        learning_rate = st.number_input("Learning rate", 0.0001, 0.1, 0.01, 0.001, format="%.4f", key="relu_lr")
+        epochs = st.slider("Max iterations (epochs)", 100, 1000, 800, 100, key="relu_epochs")
+        seed = st.number_input("Random seed", 1, 9999, 42, key="relu_seed")
 
-    def forward(self, x):
-        return self.net(x)
-
-
-# Store model in Streamlit session state
-model_config = (
-    dataset_type, n_samples, noise, hidden_size,
-    n_hidden_layers, learning_rate, int(seed)
-)
-
-if st.session_state.get("relu_config") != model_config:
-    torch.manual_seed(int(seed))
-
-    st.session_state.relu_model = ReLUNet(
-        2, hidden_size, 2, n_hidden_layers
-    )
-
-    st.session_state.relu_optimizer = optim.Adam(
-        st.session_state.relu_model.parameters(),
-        lr=learning_rate
-    )
-
-    st.session_state.relu_loss_history = []
-    st.session_state.relu_trained = False
-    st.session_state.relu_config = model_config
-
-model = st.session_state.relu_model
-optimizer = st.session_state.relu_optimizer
-criterion = nn.CrossEntropyLoss()
-
-# Section 1: Activation Curve
-st.subheader("1. ReLU Function & Derivative Curve")
-
-col_curve1, col_curve2 = st.columns(2)
-
-z_vals = np.linspace(-6, 6, 400)
-relu_vals = np.maximum(0, z_vals)
-relu_grad = np.where(z_vals > 0, 1.0, 0.0)
-
-with col_curve1:
-    fig_act, ax_act = plt.subplots(figsize=(5, 3))
-    ax_act.plot(z_vals, relu_vals, label="ReLU(z)", color="blue", lw=2)
-    ax_act.plot(
-        z_vals, relu_grad,
-        label="d/dz ReLU(z)", color="red", linestyle="--"
-    )
-    ax_act.set_title("ReLU Function and Derivative")
-    ax_act.grid(True)
-    ax_act.legend()
-    st.pyplot(fig_act)
-    plt.close(fig_act)
-
-with col_curve2:
-    st.markdown("""
-    **ReLU Properties:**
-    - Formula: $f(z) = \\max(0, z)$
-    - Gradient: 1 for positive values.
-    - Helps reduce the vanishing gradient problem for positive values.
-    - Sparse activation (zeroes out negative inputs).
-    """)
-
-# Section 2: Training
-st.subheader("2. Model Training")
-
-if st.button("Train Model with ReLU", type="primary"):
-    model.train()
-
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    loss_history = st.session_state.relu_loss_history
-
-    for epoch in range(epochs):
-        running_loss = 0.0
-
-        for b_x, b_y in train_loader:
-            optimizer.zero_grad()
-
-            predictions = model(b_x)
-            loss = criterion(predictions, b_y)
-
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item() * b_x.size(0)
-
-        epoch_loss = running_loss / len(train_loader.dataset)
-        loss_history.append(epoch_loss)
-
-        progress_bar.progress((epoch + 1) / epochs)
-
-        status_text.text(
-            f"Training Epoch: {epoch + 1}/{epochs} | "
-            f"Loss: {epoch_loss:.4f}"
-        )
-
-    st.session_state.relu_loss_history = loss_history
-
-    # Evaluate Model
-    model.eval()
-
-    def get_acc(loader):
-        correct, total = 0, 0
-
-        with torch.no_grad():
-            for bx, by in loader:
-                preds = model(bx).argmax(dim=1)
-                correct += (preds == by).sum().item()
-                total += by.size(0)
-
-        return correct / total
-
-    st.session_state.relu_train_acc = get_acc(train_loader)
-    st.session_state.relu_test_acc = get_acc(test_loader)
-    st.session_state.relu_trained = True
-
-    status_text.success("Model training completed successfully!")
-
-# Display Results Outside Button
-# This prevents results from disappearing after Streamlit reruns.
-
-if st.session_state.relu_trained:
-
-    st.subheader("3. Training Results")
-
+    st.header("1. ReLU Curve")
     col1, col2 = st.columns(2)
 
+    x_values = np.linspace(-10, 10, 400)
+    y_values = np.maximum(0, x_values)
+    dy_values = np.where(x_values > 0, 1.0, 0.0)
+
     with col1:
-        fig_loss, ax_loss = plt.subplots(figsize=(5, 3))
-        ax_loss.plot(
-            range(1, len(st.session_state.relu_loss_history) + 1),
-            st.session_state.relu_loss_history,
-            color="purple"
-        )
-        ax_loss.set_title("Training Loss Curve")
-        ax_loss.set_xlabel("Epoch")
-        ax_loss.set_ylabel("Loss")
-        ax_loss.grid(True)
-        st.pyplot(fig_loss)
-        plt.close(fig_loss)
+        fig, ax = plt.subplots(figsize=(7, 4))
+        ax.plot(x_values, y_values, label="ReLU f(x)")
+        ax.plot(x_values, dy_values, "--", label="Derivative f'(x)")
+        ax.scatter(x_input, output, color="red", label="Your input", zorder=5)
+        ax.set_title("ReLU Activation")
+        ax.set_xlabel("Input x")
+        ax.set_ylabel("Output")
+        ax.grid(True)
+        ax.legend()
+        st.pyplot(fig)
+        plt.close(fig)
 
     with col2:
-        st.metric(
-            "Train Accuracy",
-            f"{st.session_state.relu_train_acc * 100:.2f}%"
-        )
-        st.metric(
-            "Test Accuracy",
-            f"{st.session_state.relu_test_acc * 100:.2f}%"
-        )
+        st.subheader("Output for your input")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Input x", f"{x_input:.2f}")
+        c2.metric("ReLU(x)", f"{output:.4f}")
+        c3.metric("Derivative", f"{derivative:.4f}")
+        st.subheader("Properties")
+        st.write("- Range: [0, ∞)")
+        st.write("- Negative inputs produce zero.")
+        st.write("- Positive inputs remain unchanged.")
+        st.write("- Helps reduce the vanishing gradient problem for positive inputs.")
 
-    # Decision Boundary Plot
-    st.subheader("4. Decision Boundary")
+    # Dataset
+    np.random.seed(int(seed))
+    torch.manual_seed(int(seed))
 
-    x_min = X_scaled[:, 0].min() - 0.5
-    x_max = X_scaled[:, 0].max() + 0.5
-    y_min = X_scaled[:, 1].min() - 0.5
-    y_max = X_scaled[:, 1].max() + 0.5
+    if dataset_name == "Moons":
+        X, y = make_moons(n_samples=samples, noise=noise, random_state=int(seed))
+    else:
+        X, y = make_circles(n_samples=samples, noise=noise, factor=0.5, random_state=int(seed))
 
-    xx, yy = np.meshgrid(
-        np.linspace(x_min, x_max, 200),
-        np.linspace(y_min, y_max, 200)
+    X = StandardScaler().fit_transform(X)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=int(seed), stratify=y
     )
 
-    grid_tensor = torch.from_numpy(
-        np.c_[xx.ravel(), yy.ravel()]
-    ).float()
+    X_train = torch.tensor(X_train, dtype=torch.float32)
+    X_test = torch.tensor(X_test, dtype=torch.float32)
+    y_train = torch.tensor(y_train, dtype=torch.float32).reshape(-1, 1)
+    y_test = torch.tensor(y_test, dtype=torch.float32).reshape(-1, 1)
 
-    model.eval()
-
-    with torch.no_grad():
-        Z = model(grid_tensor).argmax(dim=1).numpy().reshape(xx.shape)
-
-    fig_db, ax_db = plt.subplots(figsize=(6, 4))
-    ax_db.contourf(xx, yy, Z, alpha=0.4, cmap="coolwarm")
-    ax_db.scatter(
-        X_scaled[:, 0], X_scaled[:, 1],
-        c=y, edgecolor="k", cmap="coolwarm", s=25
+    train_loader = DataLoader(
+        TensorDataset(X_train, y_train), batch_size=32, shuffle=True
     )
-    ax_db.set_title("ReLU Decision Boundary")
-    ax_db.set_xlabel("Feature 1")
-    ax_db.set_ylabel("Feature 2")
-    st.pyplot(fig_db)
-    plt.close(fig_db)
 
-else:
-    st.info("Click 'Train Model with ReLU' to start training.")
+    class ReLUNet(nn.Module):
+        def __init__(self):
+            super().__init__()
+            layers = []
+            input_size = 2
+            for _ in range(int(hidden_layers)):
+                layers.extend([nn.Linear(input_size, int(hidden_size)), nn.ReLU()])
+                input_size = int(hidden_size)
+            layers.extend([nn.Linear(input_size, 1), nn.Sigmoid()])
+            self.network = nn.Sequential(*layers)
+
+        def forward(self, x):
+            return self.network(x)
+
+    config = (dataset_name, samples, noise, hidden_size, hidden_layers, learning_rate, seed)
+    state_key = "relu_training_state"
+
+    if state_key not in st.session_state or st.session_state[state_key]["config"] != config:
+        torch.manual_seed(int(seed))
+        model = ReLUNet()
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        st.session_state[state_key] = {
+            "config": config, "model": model, "optimizer": optimizer,
+            "loss_history": [], "trained": False
+        }
+
+    state = st.session_state[state_key]
+    model = state["model"]
+    optimizer = state["optimizer"]
+
+    st.header("2. Neural Network Training")
+    if st.button("Train Model", type="primary", key="relu_train"):
+        loss_function = nn.BCELoss()
+        progress = st.progress(0)
+        status = st.empty()
+
+        for epoch in range(int(epochs)):
+            model.train()
+            total_loss = 0
+
+            for batch_X, batch_y in train_loader:
+                optimizer.zero_grad()
+                predictions = model(batch_X)
+                loss = loss_function(predictions, batch_y)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+
+            state["loss_history"].append(total_loss / len(train_loader))
+            progress.progress((epoch + 1) / int(epochs))
+            if (epoch + 1) % 100 == 0:
+                status.write(f"Training epoch {epoch + 1}/{epochs}")
+
+        state["trained"] = True
+        status.success("Model training completed!")
+
+    if state["trained"]:
+        st.header("3. Training Results")
+        model.eval()
+
+        with torch.no_grad():
+            train_acc = ((model(X_train) >= 0.5) == y_train).float().mean().item() * 100
+            test_acc = ((model(X_test) >= 0.5) == y_test).float().mean().item() * 100
+
+        c1, c2 = st.columns(2)
+        c1.metric("Training Accuracy", f"{train_acc:.2f}%")
+        c2.metric("Testing Accuracy", f"{test_acc:.2f}%")
+
+        st.subheader("Training Loss Curve")
+        fig, ax = plt.subplots()
+        ax.plot(state["loss_history"])
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss")
+        ax.grid(True)
+        st.pyplot(fig)
+        plt.close(fig)
+
+        st.subheader("Decision Boundary")
+        x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5
+        y_min, y_max = X[:, 1].min() - 0.5, X[:, 1].max() + 0.5
+        xx, yy = np.meshgrid(np.linspace(x_min, x_max, 150), np.linspace(y_min, y_max, 150))
+        grid = torch.tensor(np.c_[xx.ravel(), yy.ravel()], dtype=torch.float32)
+
+        with torch.no_grad():
+            Z = model(grid).numpy().reshape(xx.shape)
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.contourf(xx, yy, Z, levels=[0, 0.5, 1], alpha=0.3)
+        ax.scatter(X[:, 0], X[:, 1], c=y, edgecolors="black")
+        ax.set_title("ReLU Decision Boundary")
+        ax.set_xlabel("Feature 1")
+        ax.set_ylabel("Feature 2")
+        st.pyplot(fig)
+        plt.close(fig)
+    else:
+        st.info("Adjust the hyperparameters and click Train Model to begin.")
+
+
+if __name__ == "__main__":
+    run_app()
