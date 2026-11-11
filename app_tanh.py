@@ -1,4 +1,3 @@
-
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,8 +11,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 # Page Configuration
-st.set_page_config(page_title="Tanh Activation NN Visualizer", layout="wide")
-
+if __name__ == "__main__":
+    st.set_page_config(
+        page_title="Tanh Activation NN Visualizer",
+        layout="wide"
+    )
 st.title("3. Hyperbolic Tangent (Tanh) Activation Function")
 st.write(
     """
