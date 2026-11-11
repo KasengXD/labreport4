@@ -12,7 +12,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 # Page Configuration
-st.set_page_config(page_title="ReLU Activation NN Visualizer", layout="wide")
+if __name__ == "__main__":
+    st.set_page_config(
+        page_title="ReLU Activation NN Visualizer",
+        layout="wide"
+    )
 
 st.title("1. Rectified Linear Unit (ReLU) Activation Function")
 st.write(
